@@ -7,6 +7,8 @@
 #include "Logging/LogMacros.h"
 #include "MyProjectCharacter.generated.h"
 
+class UScoreWidget;
+class USpringArmComponent;
 class UInputComponent;
 class USkeletalMeshComponent;
 class UCameraComponent;
@@ -16,18 +18,22 @@ struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FScoreChangedDelegate, float, Score);
+
 UCLASS(config=Game)
 class AMyProjectCharacter : public ACharacter
 {
 	GENERATED_BODY()
-
-	/** Pawn mesh: 1st person view (arms; seen only by self) */
+	
 	UPROPERTY(VisibleDefaultsOnly, Category=Mesh)
-	USkeletalMeshComponent* Mesh1P;
+	USkeletalMeshComponent* Mesh3P;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
+	USpringArmComponent* SpringArm;
 
 	/** First person camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
-	UCameraComponent* FirstPersonCameraComponent;
+	UCameraComponent* Camera;
 
 	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
@@ -40,12 +46,17 @@ class AMyProjectCharacter : public ACharacter
 	/** Move Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
 	UInputAction* MoveAction;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	float AimDirection = 0.f;
 	
 public:
 	AMyProjectCharacter();
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 protected:
-	virtual void BeginPlay();
+	virtual void BeginPlay() override;
 
 public:
 		
@@ -54,7 +65,7 @@ public:
 	class UInputAction* LookAction;
 
 	/** Bool for AnimBP to switch to another animation set */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Weapon)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Weapon, Replicated)
 	bool bHasRifle;
 
 	/** Setter to set the bool */
@@ -65,6 +76,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = Weapon)
 	bool GetHasRifle();
 
+	UFUNCTION(Server, Reliable)
+	void Server_GetScore(float Score);
+
+	UPROPERTY(BlueprintAssignable)
+	FScoreChangedDelegate OnGainScoreChanged;
+
+	UPROPERTY(BlueprintAssignable)
+	FScoreChangedDelegate OnTotalScoreChanged;
+
+	UPROPERTY(BlueprintAssignable)
+	FScoreChangedDelegate OnGameTimeSet;
+	
+	FORCEINLINE float GetGainScore() const { return GainScore; }
+	FORCEINLINE float GetTotalScore() const { return TotalScore; }
+
 protected:
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
@@ -72,16 +98,53 @@ protected:
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
 
-protected:
+	UFUNCTION(BlueprintCallable)
+	void CalculateAimDirection();
+
+	UFUNCTION(BlueprintCallable, Server, Reliable)
+	void Server_CalculateAimDirection();
+	
 	// APawn interface
 	virtual void SetupPlayerInputComponent(UInputComponent* InputComponent) override;
 	// End of APawn interface
 
-public:
-	/** Returns Mesh1P subobject **/
-	USkeletalMeshComponent* GetMesh1P() const { return Mesh1P; }
-	/** Returns FirstPersonCameraComponent subobject **/
-	UCameraComponent* GetFirstPersonCameraComponent() const { return FirstPersonCameraComponent; }
+private:
 
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing="OnRep_GainScore", meta = (AllowPrivateAccess = "true"))
+	float GainScore = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing="OnRep_TotalScore", meta = (AllowPrivateAccess = "true"))
+	float TotalScore = 0.f;
+
+	UPROPERTY(ReplicatedUsing="OnRep_GameTime")
+	float GameTime = 0.f;
+
+	UFUNCTION()
+	void OnRep_GainScore();
+
+	UFUNCTION()
+	void OnRep_TotalScore();
+
+	UFUNCTION()
+	void OnRep_GameTime();
+
+	void TotalScoreChanged(float InTotalScore);
+
+	void OnGameEnd();
+
+	UFUNCTION(Client, Reliable)
+	void Client_OnGameEnd();
+
+	UPROPERTY(EditDefaultsOnly)
+	TSubclassOf<UScoreWidget> ScoreWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly)
+	TSubclassOf<UUserWidget> GameEndWidgetClass;
+
+	UPROPERTY()
+	UUserWidget* GameEndWidget;
+
+	UPROPERTY()
+	UScoreWidget* ScoreWidget;
 };
 

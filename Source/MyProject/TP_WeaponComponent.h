@@ -14,6 +14,11 @@ class MYPROJECT_API UTP_WeaponComponent : public USkeletalMeshComponent
 	GENERATED_BODY()
 
 public:
+
+	/** The design didn't work for me, so I needed an extra helper. */
+	UPROPERTY(BlueprintReadWrite, Category=Gameplay)
+	USkeletalMeshComponent* WeaponSkeletalMeshComponent;
+	
 	/** Projectile class to spawn */
 	UPROPERTY(EditDefaultsOnly, Category=Projectile)
 	TSubclassOf<class AMyProjectProjectile> ProjectileClass;
@@ -45,9 +50,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Weapon")
 	void AttachWeapon(AMyProjectCharacter* TargetCharacter);
 
+	UFUNCTION(Client, Reliable)
+	void Client_AddWeaponMappingContext();
+
 	/** Make the weapon Fire a Projectile */
 	UFUNCTION(BlueprintCallable, Category="Weapon")
 	void Fire();
+
+	UFUNCTION(BlueprintCallable, Category="Weapon", Server, Reliable)
+	void Server_Fire();
+
+	UFUNCTION(BlueprintCallable, Category="Weapon", NetMulticast, Unreliable)
+	void Multicast_FireSound();
 
 protected:
 	/** Ends gameplay for this component. */

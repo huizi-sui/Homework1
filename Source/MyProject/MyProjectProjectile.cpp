@@ -1,16 +1,23 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "MyProjectProjectile.h"
+
+#include "MyProjectCharacter.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Components/SphereComponent.h"
+#include "Items/TargetCube.h"
 
 AMyProjectProjectile::AMyProjectProjectile() 
 {
+	bReplicates = true;
 	// Use a sphere as a simple collision representation
 	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
 	CollisionComp->InitSphereRadius(5.0f);
 	CollisionComp->BodyInstance.SetCollisionProfileName("Projectile");
+
+	// Only Server has the hit event.
 	CollisionComp->OnComponentHit.AddDynamic(this, &AMyProjectProjectile::OnHit);		// set up a notification for when this component hits something blocking
+	
 
 	// Players can't walk on it
 	CollisionComp->SetWalkableSlopeOverride(FWalkableSlopeOverride(WalkableSlope_Unwalkable, 0.f));
@@ -34,10 +41,14 @@ AMyProjectProjectile::AMyProjectProjectile()
 void AMyProjectProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	// Only add impulse and destroy projectile if we hit a physics
-	if ((OtherActor != nullptr) && (OtherActor != this) && (OtherComp != nullptr) && OtherComp->IsSimulatingPhysics())
+	if (!HasAuthority() || OtherActor == nullptr || OtherActor == this)
 	{
-		OtherComp->AddImpulseAtLocation(GetVelocity() * 100.0f, GetActorLocation());
-
+		return;
+	}
+	if (ATargetCube* TargetCube = Cast<ATargetCube>(OtherActor))
+	{
+		AMyProjectCharacter* Character = Cast<AMyProjectCharacter>(GetInstigator());
+		TargetCube->Hitting(Character);
 		Destroy();
 	}
 }
